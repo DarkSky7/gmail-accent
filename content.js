@@ -32,6 +32,32 @@
   const CLASS_BARHIDE2 = 'gm-accent-barhide2';
   const CLASS_IMGHIDE = 'gm-accent-imghide';
   const CLASS_IMGGLYPH = 'gm-accent-imgglyph';
+  /* White bitmaps that must keep their OWN artwork - state-bearing controls and replaced
+   * elements - are recoloured by an SVG feColorMatrix instead of being masked.
+   * The matrix writes a constant RGB and passes alpha through, so a white glyph becomes the
+   * accent and a transparent pixel stays transparent: the checked/unchecked tick and the
+   * arrow bitmaps keep working, which a mask (or `background-image:none`) destroyed. */
+  const CLASS_FILTER = 'gm-accent-filter';
+  const FILTER_ID = 'gm-accent-tint';
+  const FILTERS_ID = 'gm-accent-filters';
+  /* A light-UI SUBTREE inside the dark page: Gmail's compose window, whose plate is
+   * hard-coded `background:#fff` and whose banner is `#f0f4f9`, with no dark variant.
+   * These islands are FLATTENED to Gmail's dark surface with accent text rather than
+   * recoloured white-by-white, because the island is a whole small UI - banner, fields,
+   * editor, formatting bar - and every one of those parts is light.
+   *
+   * Inverting the island was tried first and rejected: inversion gets the darkness right but
+   * turns every colour we set into its own inverse (the accent rendered as rgb(156,102,97)),
+   * and it leaves the text white, which is not the requested look. */
+  const CLASS_DARK = 'gm-accent-dark';
+  const DARK_SURFACES = 'div.nH.Hd.rT5Apb,div.aaZ';
+  /* The READING view is the same problem one level up: the message pane is white with black
+   * text inside a dark inbox (measured 85.7% white in the body, 88% across the pane). It is
+   * flattened the same way - dark base, accent text - but WITHOUT the icon recolouring that
+   * the compose island gets, because a message body is third-party content: a sender's 40 px
+   * logo must not turn into a solid accent silhouette. */
+  const CLASS_FLAT = 'gm-accent-flat';
+  const FLAT_SURFACES = 'div.adn,div.a3s';
   const STYLE_ID = 'gm-accent-style';
   const SETTINGS_VERSION = 2;
 
@@ -55,6 +81,8 @@
   let shapeHits = 0;
   let barHits = 0;
   let imgHits = 0;
+  let darkHits = 0;
+  let flatHits = 0;
   let queue = [];
   let scheduled = false;
 
@@ -234,18 +262,11 @@
       const mask = c.webkitMaskImage || c.maskImage;
       if (mask && mask !== 'none') continue;
 
-      /* A THIN bar is an indicator, not a plate: the selected tab's underline is
-       * 237x3px of pure white. Tinting it accent turns a subtle native hairline into a
-       * conspicuous accent rule ("the extra line above the Primary row"), so thin bars
-       * are HIDDEN rather than recoloured. Anything taller is a real plate and gets the
-       * accent. The owner asked for that line to be gone; the active tab is still marked
-       * by its label colour and the row's translucent overlay. */
-      const h = parseFloat(c.height);
-      if (isFinite(h) && h > 0 && h <= 8) {
-        el.classList.add(hideCls);
-      } else {
-        el.classList.add(cls);
-      }
+      /* Thin bars are INDICATORS (the active category tab's underline) and are tinted,
+       * not hidden: the owner wants that marker kept. An earlier round hid them on the
+       * assumption the hairline was unwanted, which removed the active-column indicator
+       * entirely - do not repeat that. */
+      el.classList.add(cls);
       barHits++;
     }
   }
@@ -331,15 +352,34 @@
    */
   function considerMask(el) {
     if (!settings.tintIcons) return;
-    if (el.classList.contains(CLASS_GLYPH)) return;
+    if (el.classList.contains(CLASS_GLYPH) || el.classList.contains(CLASS_FILTER)) return;
     const cs = getComputedStyle(el);
     const bi = cs.backgroundImage;
-    if (!bi || bi === 'none' || bi.indexOf('url(') < 0) return;
+    /* A replaced element carries its artwork in `src`, not in a background image, so the
+     * `background-image` test below would skip every <img> before it reached the IMG branch. */
+    const src = el.tagName === 'IMG' ? (el.currentSrc || el.getAttribute('src') || '') : '';
+    const art = (bi && bi !== 'none' && bi.indexOf('url(') >= 0) ? bi : src;
+    if (!art) return;
+    /* Two kinds of glyph must keep their OWN artwork instead of being masked:
+     *
+     *  - replaced elements (<img>): a pseudo-element never renders on them, so a mask has
+     *    nowhere to paint, and `background-image:none` has already been applied by the
+     *    stylesheet's CLASS_GLYPH rule - so taking one over BLANKS it. The message toolbar's
+     *    newer/older chevrons measured as flat background with not one pixel of ink.
+     *  - state-bearing controls: the master-select checkbox and every message row's checkbox
+     *    swap their bitmap (check_box_outline_blank -> check_box) when ticked, and the only
+     *    place that state is observable IS the bitmap, which masking deletes. A masked
+     *    checkbox stays an empty box forever.
+     *
+     * Both are recoloured with the constant-RGB matrix filter instead: it paints the accent
+     * over whatever the artwork's alpha is, so the tick still appears and disappears. */
+    const keepArtwork = el.tagName === 'IMG' ||
+      el.matches('[role=checkbox],[role=radio],[aria-checked],.T-Jo');
     /* Gmail ships the same glyph in several variants: "*_white_20dp.png" for the dark
      * theme, but also neutral/light ones such as "info_baseline_nv200_20dp.png" used in
      * the tab bar. Testing only for "white" left those permanently light. Photos never
      * match either pattern, so their pixels are never masked. */
-    if (!/white|nv200|nv100/i.test(bi) || /skinnable/i.test(bi)) return;
+    if (!/white|nv200|nv100/i.test(art) || /skinnable/i.test(art)) return;
     // never paint over real text; child elements are fine (a checkbox tick lives there)
     if (el.textContent.trim()) return;
     /* A glyph drawn by a child <svg>/<img> colours itself. Masking the parent would paint
@@ -355,6 +395,14 @@
     for (let d = 0; node && d < 3; d++, node = node.parentElement) {
       const bg = parseColor(getComputedStyle(node).backgroundColor);
       if (bg && bg.a > 0.5 && effectiveLuminance(bg) > 0.5) return;
+    }
+
+    /* Keep-the-artwork glyphs take the matrix filter and stop here - no mask variables, no
+     * `position:relative`, no plate clearing, so nothing about their layout or state changes. */
+    if (keepArtwork) {
+      el.classList.add(CLASS_FILTER);
+      imgHits++;
+      return;
     }
 
     if (cs.position === 'static') el.style.setProperty('position', 'relative', 'important');
@@ -393,6 +441,17 @@
    */
   function walk(root) {
     if (!root || root.nodeType !== 1 || !root.isConnected) return;
+
+    /* Mark any light island in this subtree BEFORE tinting it, then refuse to descend into
+     * one. Two reasons, both load-bearing:
+     *   - the invert filter flips every colour we set inside it, so the accent would render
+     *     as its own inverse (measured: #7BC8CE came out rgb(156,102,97));
+     *   - the compose window's own icons are DARK light-theme bitmaps and its text is dark on
+     *     white. Inversion fixes both; a tint pass would leave dark-on-dark text. */
+    markDarkSurfaces(root);
+    markFlatSurfaces(root);
+    if (root !== document.body && root.closest &&
+        root.closest('.' + CLASS_DARK + ',.' + CLASS_FLAT)) return;
 
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
     const parents = new Set();
@@ -475,7 +534,8 @@
       (document.head || document.documentElement).appendChild(styleEl);
     }
     styleEl.textContent =
-      ':root{--gm-accent-fg:' + settings.color + ';}' +
+      ':root{--gm-accent-fg:' + settings.color + ';' +
+        '--gm-dark-bg:#1b1b1b;--gm-dark-banner:#333333;--gm-dark-line:#5f6368;}' +
       '.' + CLASS + '{color:var(--gm-accent-fg)!important;}' +
       // ONLY fill. Google's icon SVGs open with a transparent hit-area path,
       // `<path fill="none" d="M0 0h24v24H0z">`, which INHERITS `stroke` from the svg
@@ -487,14 +547,42 @@
       '.' + CLASS_PLATE + '{background-color:var(--gm-accent-fg)!important;}' +
       '.' + CLASS_PLATE_CLEAR + '{background-color:transparent!important;}' +
       '.' + CLASS_BORDER + '{border-color:var(--gm-accent-fg)!important;}' +
+      // constant-RGB matrix: white artwork -> accent, alpha untouched (see CLASS_FILTER)
+      '.' + CLASS_FILTER + '{filter:url(#' + FILTER_ID + ')!important;}' +
+      // flatten a light-UI island: Gmail's dark surface, accent text, gray banner
+      '.' + CLASS_DARK + '{background-color:var(--gm-dark-bg)!important;filter:none!important;}' +
+      '.' + CLASS_DARK + ' *{background-color:transparent!important;color:var(--gm-accent-fg)!important;' +
+        'border-color:var(--gm-dark-line)!important;}' +
+      '.' + CLASS_DARK + ' .l.m{background-color:var(--gm-dark-banner)!important;}' +
+      // same flatten for the reading view, minus the banner override
+      '.' + CLASS_FLAT + '{background-color:var(--gm-dark-bg)!important;}' +
+      '.' + CLASS_FLAT + ' *{background-color:transparent!important;color:var(--gm-accent-fg)!important;' +
+        'border-color:var(--gm-dark-line)!important;}' +
       // the glyph lives on ::before so the element's own plate stays free to be cleared
       '.' + CLASS_GLYPH + '{background-image:none!important;}' +
-      '.' + CLASS_GLYPH + '::before{content:"";position:absolute;inset:0;pointer-events:none;' +
-        'background-color:var(--gm-accent-fg);background-image:none!important;' +
-        '-webkit-mask-image:var(--gm-ico);mask-image:var(--gm-ico);' +
-        '-webkit-mask-position:var(--gm-ico-pos);mask-position:var(--gm-ico-pos);' +
-        '-webkit-mask-size:var(--gm-ico-size);mask-size:var(--gm-ico-size);' +
-        '-webkit-mask-repeat:var(--gm-ico-rep);mask-repeat:var(--gm-ico-rep);}' +
+      // Every property that decides whether the mask is SEEN has to win against Gmail's
+      // own pseudo rules. Gmail ships `.G-Ni .T-Jo::before` and `.apF .asa::before` as
+      // `{display:block;opacity:0;background:none}` - a reserved, invisible box. Both are
+      // MORE SPECIFIC than a single class (0,2,1 vs 0,1,1) and the `background` shorthand
+      // also resets background-color. The result was a dead icon: the native white bitmap
+      // had already been removed by the rule above, and our replacement mask rendered at
+      // opacity 0 over a transparent background, so the Select checkbox and its dropdown
+      // arrow painted NOTHING (measured: a 20x20 box of flat rgb(44,44,44)). `!important`
+      // on opacity/visibility/inset/background-color is what makes the glyph visible.
+      '.' + CLASS_GLYPH + '::before{content:""!important;position:absolute!important;' +
+        'top:0!important;right:0!important;bottom:0!important;left:0!important;' +
+        'display:block!important;opacity:1!important;visibility:visible!important;' +
+        // `transform: matrix(0,0,0,0,0,0)` is Gmail scaling the pseudo to ZERO. On the Select
+        // checkbox this pseudo is the tick mark, held at scale 0 until the box is checked, so
+        // every property above was honoured and the icon still painted nothing. `z-index:-1`
+        // comes from the same Gmail rule and would bury the glyph behind a plate.
+        'transform:none!important;z-index:0!important;' +
+        'pointer-events:none!important;' +
+        'background-color:var(--gm-accent-fg)!important;background-image:none!important;' +
+        '-webkit-mask-image:var(--gm-ico)!important;mask-image:var(--gm-ico)!important;' +
+        '-webkit-mask-position:var(--gm-ico-pos)!important;mask-position:var(--gm-ico-pos)!important;' +
+        '-webkit-mask-size:var(--gm-ico-size)!important;mask-size:var(--gm-ico-size)!important;' +
+        '-webkit-mask-repeat:var(--gm-ico-rep)!important;mask-repeat:var(--gm-ico-rep)!important;}' +
       // Gmail often paints its OWN glyph bitmap on ::before of the same element; left in
       // place it sits on top of the accent mask and the icon reads white again
       '.' + CLASS_GLYPH + '::after{background-image:none!important;}' +
@@ -512,6 +600,71 @@
       '::-webkit-scrollbar-track{background:transparent;}' +
       '::-webkit-scrollbar-thumb{background:var(--gm-accent-fg);border-radius:6px;}' +
       '::-webkit-scrollbar-corner{background:transparent;}';
+  }
+
+  /* The feColorMatrix the CLASS_FILTER rule points at. It has to live in the page, not in
+   * the stylesheet: `filter:url(#id)` resolves against the DOCUMENT. Values are 0..1.
+   * Row 1-3 write the accent into RGB for every pixel; row 4 (`0 0 0 1 0`) copies alpha
+   * across unchanged, which is what keeps a checkbox tick transparent when it is invisible. */
+  function renderFilters() {
+    let svg = document.getElementById(FILTERS_ID);
+    if (!svg || !svg.isConnected) {
+      svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.id = FILTERS_ID;
+      svg.setAttribute('aria-hidden', 'true');
+      svg.setAttribute('width', '0');
+      svg.setAttribute('height', '0');
+      svg.style.cssText = 'position:absolute;left:-9999px;top:0;width:0;height:0;overflow:hidden';
+      (document.body || document.documentElement).appendChild(svg);
+    }
+    const c = hexToRgb(settings.color);
+    const f = v => (v / 255).toFixed(5);
+    svg.innerHTML = '<filter id="' + FILTER_ID + '" color-interpolation-filters="sRGB">' +
+      '<feColorMatrix type="matrix" values="0 0 0 0 ' + f(c.r) + ' ' +
+      '0 0 0 0 ' + f(c.g) + ' ' +
+      '0 0 0 0 ' + f(c.b) + ' ' +
+      '0 0 0 1 0"/></filter>';
+  }
+
+  /* Gmail's compose window is a LIGHT island: `.aaZ{background:#fff}` and
+   * `td.Ap{background-color:#fff}` are hard-coded with no dark-theme variant, which is why a
+   * maximised compose was 82% white inside an otherwise dark inbox. Marking the island lets
+   * the CSS invert it, and marking it FIRST lets every tint pass skip the subtree - tinting
+   * inside an inverted area would render the accent as its inverse. */
+  function markSurfaces(root, selector, cls, doAccentise) {
+    if (!settings.enabled) return;
+    const nodes = [];
+    if (root && root.nodeType === 1 && root.matches && root.matches(selector)) nodes.push(root);
+    if (root && root.querySelectorAll) {
+      for (const n of root.querySelectorAll(selector)) nodes.push(n);
+    }
+    for (const n of nodes) {
+      if (n.classList.contains(cls)) continue;
+      n.classList.add(cls);
+      if (cls === CLASS_DARK) darkHits++; else flatHits++;
+      if (doAccentise) accentiseIsland(n);
+    }
+  }
+
+  function markDarkSurfaces(root) { markSurfaces(root, DARK_SURFACES, CLASS_DARK, true); }
+  function markFlatSurfaces(root) { markSurfaces(root, FLAT_SURFACES, CLASS_FLAT, false); }
+
+  /* The island's own icons are LIGHT-theme bitmaps - dark glyphs on transparency - so flattening
+   * the background leaves them invisible. The constant-RGB matrix recolours a bitmap whatever
+   * its original colour is, so every small image box inside the island is tagged and comes out
+   * accent. Text is handled by the island's CSS rule. */
+  function accentiseIsland(island) {
+    for (const n of island.querySelectorAll('*')) {
+      if (n.classList.contains(CLASS_FILTER) || n.classList.contains(CLASS_GLYPH)) continue;
+      const r = n.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4 || r.width > 64 || r.height > 64) continue;
+      const cs = getComputedStyle(n);
+      const bi = cs.backgroundImage;
+      const src = n.tagName === 'IMG' ? (n.currentSrc || n.getAttribute('src') || '') : '';
+      if (!((bi && bi.indexOf('url(') >= 0) || src)) continue;
+      n.classList.add(CLASS_FILTER);
+      imgHits++;
+    }
   }
 
   function clearMaskInline(el) {
@@ -550,6 +703,9 @@
       el.classList.remove(CLASS_BARHIDE); el.classList.remove(CLASS_BARHIDE2);
     });
     document.querySelectorAll('.' + CLASS_IMGHIDE).forEach(el => el.classList.remove(CLASS_IMGHIDE));
+    document.querySelectorAll('.' + CLASS_FILTER).forEach(el => el.classList.remove(CLASS_FILTER));
+    document.querySelectorAll('.' + CLASS_DARK).forEach(el => el.classList.remove(CLASS_DARK));
+    document.querySelectorAll('.' + CLASS_FLAT).forEach(el => el.classList.remove(CLASS_FLAT));
     document.querySelectorAll('.' + CLASS_IMGGLYPH).forEach(el => {
       el.classList.remove(CLASS_IMGGLYPH);
       for (const p of ['--gm-ico', '--gm-ico-size', '--gm-ico-pos', '--gm-ico-rep', 'position']) {
@@ -564,6 +720,8 @@
     shapeHits = 0;
     barHits = 0;
     imgHits = 0;
+    darkHits = 0;
+    flatHits = 0;
     queue = [];
   }
 
@@ -571,10 +729,17 @@
     if (!settings.enabled) {
       reset();
       if (styleEl) styleEl.textContent = '';
+      const svg = document.getElementById(FILTERS_ID);
+      if (svg) svg.remove();
       return;
     }
     renderStyle();
+    renderFilters();
     reset();
+    /* mark the light islands BEFORE the first tint pass: `reset()` just cleared every marker,
+     * and a tint applied inside one would survive the inversion as its own inverse. */
+    markDarkSurfaces(document.body);
+    markFlatSurfaces(document.body);
     enqueue(document.body);
     settle();
   }
@@ -659,7 +824,7 @@
 
   chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
     if (!msg || !msg.type) return;
-    const counts = () => ({ hits, iconHits, plateHits, plateCleared, maskHits, shapeHits, barHits, imgHits });
+    const counts = () => ({ hits, iconHits, plateHits, plateCleared, maskHits, shapeHits, barHits, imgHits, darkHits, flatHits });
     if (msg.type === 'gm-accent:apply' && msg.settings) {
       settings = Object.assign({}, settings, msg.settings);
       applyAll();

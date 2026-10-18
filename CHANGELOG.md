@@ -4,6 +4,43 @@ Working directory is `F:\Documents\GitHub\gmail-accent` and the repository is
 `DarkSky7/gmail-accent` — folder and repo names match. The extension is loaded
 unpacked in Brave from that folder path.
 
+## 1.5.7 — 2026-10-18
+
+**Restored the active-tab indicator and killed the last white surfaces.**
+
+*The tab underline is back.* 1.5.6 hid every thin `::before` bar on the theory that the
+hairline was unwanted. It was the active-column indicator, and the owner noticed it had
+gone. Thin bars are now **tinted, never hidden** — accent on accent still marks the
+selected tab, and the band that looked like a "gap" is Gmail's real toolbar row.
+
+*Compose and the reading view are no longer white islands.* Gmail hard-codes
+`.aaZ{background:#fff}`, `td.Ap{background-color:#fff}` and a `#f0f4f9` compose banner with
+no dark variant, so inside a dark inbox a maximised compose measured **82% white** and an
+open message **88% white** (body 85.7%). Both are now flattened to Gmail's dark surface
+with accent text: the compose banner stays a **separate gray** (`#333`) so it still reads as
+a title bar, and message bodies get accent text on the dark base. Compose measures **0.00%
+white**; the reading pane **10.9%** (residue is the senders' own imagery, deliberately left
+alone). Inverting the island was tried first and rejected: inversion turns every colour we
+set into its inverse — the accent rendered as `rgb(156,102,97)` — and leaves text white.
+
+*Icons that were painting nothing.* Three separate faults, all measured as flat background
+RGB with zero ink:
+
+- The replacement mask lives on `::before`, and Gmail ships `.G-Ni .T-Jo::before` and
+  `.apF .asa::before` as `{opacity:0;background:none}` — more specific than one class, so the
+  checkbox and its dropdown arrow rendered at opacity 0 with no background.
+- The same pseudo also carries `transform:matrix(0,0,0,0,0,0)`: Gmail scales the *tick* to
+  zero and reveals it when the box is checked. Forcing opacity and inset was not enough.
+- `<img>` glyphs were blanked outright: a replaced element never renders `::before`, so the
+  mask had nowhere to paint while `background-image:none` had already removed the artwork.
+
+Every property that decides whether the mask is *seen* is now `!important`
+(`opacity/visibility/inset/transform/z-index`), and glyphs that must keep their own artwork
+are recoloured by a constant-RGB **`feColorMatrix`** instead of being masked: it writes the
+accent into RGB and passes alpha through, so a checkbox tick still appears and disappears on
+toggle and a `<img>` glyph keeps its shape. Menus and file pickers that are open during a
+rescan keep working.
+
 ## 1.5.6 — 2026-10-18
 
 **Removed the extra line above the Primary row.** It was the selected tab's underline: a
