@@ -1,3 +1,7 @@
 node_modules/
 __pycache__/
 *.pyc
+
+# Derived build output: the Chromium/Brave 'Load unpacked' tree is staged by
+# build-xpi.py --unpacked; never commit the copy.
+dist/chrome-*/
