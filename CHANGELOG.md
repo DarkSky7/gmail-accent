@@ -4,6 +4,22 @@ Working directory is `F:\Documents\GitHub\gmail-accent` and the repository is
 `DarkSky7/gmail-accent` — folder and repo names match. The extension is loaded
 unpacked in Brave from that folder path.
 
+## 1.5.8 — 2026-10-18
+
+**AMO validator clean-ups.** Three warnings raised on the first submission:
+
+- `strict_min_version` was `128.0` while `browser_specific_settings.gecko.
+  data_collection_permissions` only exists from Firefox 140 — the manifest promised support
+  for a version that cannot read one of its own keys. Now `140.0`, matching DarkMode and
+  transcript-first-guard.
+- the same claim on Android, which needs `142.0`; an explicit `gecko_android` block is now
+  present instead of inheriting 128 from the desktop value.
+- **`Unsafe assignment to innerHTML`** — `renderFilters()` built the `feColorMatrix` from a
+  string. AMO is right: `innerHTML` parses the string as markup, so a dynamic value becomes
+  markup. The filter and its matrix are now created with `createElementNS` in the SVG
+  namespace, and the colour is written with `setAttribute` — a value that can never be
+  parsed as markup. The node is built once and only its `values` attribute is rewritten.
+
 ## 1.5.7 — 2026-10-18
 
 **Restored the active-tab indicator and killed the last white surfaces.**

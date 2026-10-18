@@ -1,7 +1,9 @@
-# AMO submission kit — Gmail Accent v1.4.1
+# AMO submission kit — Gmail Accent v1.5.8
 
-Package: `dist/gmail-accent-1.4.1.xpi` (11,944 bytes, 9 entries, byte-identical `.zip`)
+Package: `dist/gmail-accent-1.5.8.xpi` (17,958 bytes, 9 entries, byte-identical `.zip`)
 Extension (Gecko) ID: `gmail-accent@landis.cc` — already in `manifest.json`
+Minimum: Firefox 140 / Firefox for Android 142 (matches `data_collection_permissions`)
+Validator status: clean — no warnings as of 1.5.8
 Repository: https://github.com/DarkSky7/gmail-accent
 
 ## Decisions (inherit from transcript-first-guard, locked 2026-08-24)

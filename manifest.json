@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Gmail Accent - recolor the white text",
-  "version": "1.5.7",
+  "version": "1.5.8",
   "description": "In Gmail's dark theme, substitutes a colour of your choice for the near-white foreground. Default: muted cyan. Leaves white text on light or coloured buttons alone.",
   "permissions": ["storage"],
   "action": {
@@ -34,8 +34,11 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "gmail-accent@landis.cc",
-      "strict_min_version": "128.0",
+      "strict_min_version": "140.0",
       "data_collection_permissions": { "required": ["none"] }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
     }
   }
 }

@@ -605,11 +605,19 @@
   /* The feColorMatrix the CLASS_FILTER rule points at. It has to live in the page, not in
    * the stylesheet: `filter:url(#id)` resolves against the DOCUMENT. Values are 0..1.
    * Row 1-3 write the accent into RGB for every pixel; row 4 (`0 0 0 1 0`) copies alpha
-   * across unchanged, which is what keeps a checkbox tick transparent when it is invisible. */
+   * across unchanged, which is what keeps a checkbox tick transparent when it is invisible.
+   *
+   * Built with createElementNS, never by assigning an HTML string. AMO flags that pattern
+   * as an unsafe assignment (and it is right to): a string-built subtree is parsed as HTML,
+   * so anything injected into it becomes markup. Every node here is created in the SVG
+   * namespace explicitly and the colour reaches the DOM as an attribute value, which cannot
+   * be parsed as markup at all. */
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+
   function renderFilters() {
     let svg = document.getElementById(FILTERS_ID);
     if (!svg || !svg.isConnected) {
-      svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg = document.createElementNS(SVG_NS, 'svg');
       svg.id = FILTERS_ID;
       svg.setAttribute('aria-hidden', 'true');
       svg.setAttribute('width', '0');
@@ -617,13 +625,30 @@
       svg.style.cssText = 'position:absolute;left:-9999px;top:0;width:0;height:0;overflow:hidden';
       (document.body || document.documentElement).appendChild(svg);
     }
+
+    // the filter node is created once and only its `values` attribute is rewritten
+    let filter = svg.firstElementChild;
+    if (!filter || filter.localName !== 'filter') {
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      filter = document.createElementNS(SVG_NS, 'filter');
+      filter.setAttribute('id', FILTER_ID);
+      filter.setAttribute('color-interpolation-filters', 'sRGB');
+      const matrix = document.createElementNS(SVG_NS, 'feColorMatrix');
+      matrix.setAttribute('type', 'matrix');
+      filter.appendChild(matrix);
+      svg.appendChild(filter);
+    }
+
     const c = hexToRgb(settings.color);
     const f = v => (v / 255).toFixed(5);
-    svg.innerHTML = '<filter id="' + FILTER_ID + '" color-interpolation-filters="sRGB">' +
-      '<feColorMatrix type="matrix" values="0 0 0 0 ' + f(c.r) + ' ' +
-      '0 0 0 0 ' + f(c.g) + ' ' +
-      '0 0 0 0 ' + f(c.b) + ' ' +
-      '0 0 0 1 0"/></filter>';
+    const matrix = filter.firstElementChild;
+    if (matrix) {
+      matrix.setAttribute('values',
+        '0 0 0 0 ' + f(c.r) + ' ' +
+        '0 0 0 0 ' + f(c.g) + ' ' +
+        '0 0 0 0 ' + f(c.b) + ' ' +
+        '0 0 0 1 0');
+    }
   }
 
   /* Gmail's compose window is a LIGHT island: `.aaZ{background:#fff}` and
