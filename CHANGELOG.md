@@ -4,6 +4,46 @@ Working directory is `F:\Documents\GitHub\gmail-accent` and the repository is
 `DarkSky7/gmail-accent` — folder and repo names match. The extension is loaded
 unpacked in Brave from that folder path.
 
+## 1.5.4 — 2026-10-18
+
+Two defects reported from a screenshot: **icons had moved** (the search magnifier and the
+tab-bar icon) and the **support question-mark looked wrong**.
+
+**The move was a layout bug, and it was measurable.** With the extension active the search
+form was **48 px tall; with every `gm-accent-*` class stripped it was 101 px** — wait, the
+other way round: 101 px with the extension, 48 px without. `button.gb_6e` (Advanced
+search) jumped from `(718,8)` to `(256,54)`, i.e. wrapped onto a second row, and
+`button.gb_2e` (the magnifier) shifted `312 -> 256`.
+
+Cause: `considerWhiteImg` matched a *20 px white icon* `<img>` inside an icon button,
+because it tested `/white/` on the URL. It then hid the image and set
+`position: relative !important` on the button, which re-anchored that button's absolutely
+positioned siblings. Fixes:
+- match only `logo|lockup|wordmark`, never the generic `white` pattern
+- require a **wide** bitmap (>=60 px). The wordmark is 109x40; real icons are 20-24 px
+- never touch a `BUTTON` parent, never touch a parent that already contains an `<svg>`
+- only ever set `position: relative` on a `static` parent
+
+Verified: hidden `<img>` count is now exactly **1** (`logo_gmail_lockup_dark_2x_r7.png`),
+and a rect-diff of 790 elements with/without the extension reports **0 moved**.
+
+**The mask geometry was copy-paste wrong.** The mask pass reused Gmail's own
+`background-size`/`background-position`/`background-repeat`. For the neutral variants
+(`info_baseline_nv200_20dp.png` = a 2x asset in a 20 px box) the copied size exceeded the
+box, so only a corner of the glyph showed, and a copied `repeat` tiled it — it rendered as
+a diagonal streak. These passes only ever run on single-glyph icon boxes (the element's OWN
+background-image must be the icon), so the mask is now fixed at
+`contain / center / no-repeat`. The support icon reads as a clean question mark inside its
+circle.
+
+**Method note that cost a false alarm:** after the layout fix every icon shifted by 12 px,
+so an ASCII dump taken at the *old* hard-coded coordinates sampled empty space and looked
+like a broken streak. Always read icon rects from `getBoundingClientRect()` at measure
+time; never reuse coordinates from an earlier run.
+
+State after 1.5.4: white pixels 894 (0.015%), only the profile photo; layout identical to
+Gmail's own.
+
 ## 1.5.2 — 2026-10-18
 
 Closes the remaining white in Mike's screenshot, found by measuring PIXELS rather than

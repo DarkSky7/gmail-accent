@@ -210,13 +210,25 @@
     if (!img || img.tagName !== 'IMG') return;
     if (img.classList.contains(CLASS_IMGHIDE)) return;
     const src = img.currentSrc || img.src || '';
-    if (!src || !/white|logo|lockup/i.test(src)) return;
+    /* Only a WORDMARK-style bitmap. Matching "white" here caught ordinary 20 px icon
+     * <img>s inside icon buttons; hiding one and making its button position:relative
+     * re-anchored the button's absolutely positioned siblings and visibly MOVED the
+     * search magnifier and the adjacent icon (measured: form 48 -> 101 px, buttons
+     * re-flowed to a second row). */
+    if (!src || !/logo|lockup|wordmark/i.test(src)) return;
     const b = img.getBoundingClientRect();
-    if (b.width < 12 || b.height < 8 || b.width > 420 || b.height > 140) return;
+    /* A real icon is ~20-24 px. The wordmark is ~109x40. Requiring a wide bitmap keeps
+     * this pass away from icon-sized images entirely. */
+    if (b.width < 60 || b.height < 12 || b.width > 420 || b.height > 140) return;
 
     const parent = img.parentElement;
-    if (!parent || parent.classList.contains(CLASS_IMGGLYPH)) return;
+    if (!parent) return;
+    if (parent.tagName === 'BUTTON') return;          // never touch a button's layout
+    if (parent.querySelector('svg')) return;          // a real icon: the svg passes own it
+    if (parent.classList.contains(CLASS_IMGGLYPH)) return;
     const pcs = getComputedStyle(parent);
+    // only ever make a static parent a containing block; never re-anchor an already
+    // positioned one, which is what displaced its absolute siblings
     if (pcs.position === 'static') parent.style.setProperty('position', 'relative', 'important');
     parent.style.setProperty('--gm-ico', 'url("' + src + '")');
     parent.style.setProperty('--gm-ico-size', 'contain');
@@ -362,9 +374,15 @@
 
     if (cs.position === 'static') el.style.setProperty('position', 'relative', 'important');
     el.style.setProperty('--gm-ico', bi);
-    el.style.setProperty('--gm-ico-pos', cs.backgroundPosition);
-    el.style.setProperty('--gm-ico-size', cs.backgroundSize);
-    el.style.setProperty('--gm-ico-rep', cs.backgroundRepeat);
+    /* Fit the mask to the box, always. Copying Gmail's own background-size/position was
+     * wrong: for the neutral variants (e.g. info_baseline_nv200_20dp.png) the copied
+     * size exceeded the 20 px box, so only a corner of the glyph showed - a diagonal
+     * streak - and a copied `repeat` tiled it. These elements are single-glyph icon
+     * boxes (the pass already requires the element's OWN background-image to be the
+     * icon), so contain/center/no-repeat is the correct, predictable rendering. */
+    el.style.setProperty('--gm-ico-size', 'contain');
+    el.style.setProperty('--gm-ico-pos', 'center');
+    el.style.setProperty('--gm-ico-rep', 'no-repeat');
 
     // an own white plate becomes transparent: the glyph should read against the
     // surrounding chrome, not against a coloured box
