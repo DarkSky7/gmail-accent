@@ -198,46 +198,16 @@
     shapeHits++;
   }
 
-  /* 2c. White glyphs delivered as <img>, and decorative white pseudo backs.
+  /* 2c. Decorative white pseudo backs (no longer used for <img> bitmaps).
    *
-   * The Gmail wordmark is an <img> whose pixels are white: no CSS property recolours a
-   * bitmap, and the element cannot mask itself (opacity/mask apply to its own painted
-   * content). The trick is to hide the <img> and paint the SAME bitmap as an alpha mask
-   * on its parent's ::after, which is free to carry the accent.
+   * The Gmail wordmark is an <img> of white pixels and was briefly masked onto its
+   * parent's ::after. That tinted the brand lockup, which the owner does not want - the
+   * "M" should keep its native colours - so the <img> pass is deliberately gone. The
+   * remaining pseudo handling below only touches generated white boxes.
    */
-  function considerWhiteImg(img) {
-    if (!settings.tintIcons) return;
-    if (!img || img.tagName !== 'IMG') return;
-    if (img.classList.contains(CLASS_IMGHIDE)) return;
-    const src = img.currentSrc || img.src || '';
-    /* Only a WORDMARK-style bitmap. Matching "white" here caught ordinary 20 px icon
-     * <img>s inside icon buttons; hiding one and making its button position:relative
-     * re-anchored the button's absolutely positioned siblings and visibly MOVED the
-     * search magnifier and the adjacent icon (measured: form 48 -> 101 px, buttons
-     * re-flowed to a second row). */
-    if (!src || !/logo|lockup|wordmark/i.test(src)) return;
-    const b = img.getBoundingClientRect();
-    /* A real icon is ~20-24 px. The wordmark is ~109x40. Requiring a wide bitmap keeps
-     * this pass away from icon-sized images entirely. */
-    if (b.width < 60 || b.height < 12 || b.width > 420 || b.height > 140) return;
-
-    const parent = img.parentElement;
-    if (!parent) return;
-    if (parent.tagName === 'BUTTON') return;          // never touch a button's layout
-    if (parent.querySelector('svg')) return;          // a real icon: the svg passes own it
-    if (parent.classList.contains(CLASS_IMGGLYPH)) return;
-    const pcs = getComputedStyle(parent);
-    // only ever make a static parent a containing block; never re-anchor an already
-    // positioned one, which is what displaced its absolute siblings
-    if (pcs.position === 'static') parent.style.setProperty('position', 'relative', 'important');
-    parent.style.setProperty('--gm-ico', 'url("' + src + '")');
-    parent.style.setProperty('--gm-ico-size', 'contain');
-    parent.style.setProperty('--gm-ico-pos', 'center');
-    parent.style.setProperty('--gm-ico-rep', 'no-repeat');
-    parent.classList.add(CLASS_IMGGLYPH);
-    img.classList.add(CLASS_IMGHIDE);
-    imgHits++;
-  }
+  /* Deliberately no <img> pass: the only bitmap it ever matched was the Gmail wordmark,
+   * and tinting the brand lockup is not wanted. Re-adding this requires the owner's say-so.
+   */
 
   /* Gmail marks the SELECTED tab and several chrome rows with a bare pseudo-element
    * whose background-color is pure white (measured: the "Primary" tab's ::before is
@@ -431,8 +401,6 @@
     for (const s of root.querySelectorAll('path,rect,circle,ellipse,polygon,line,use')) considerShape(s);
 
     // white bitmaps delivered as <img>, and decorative white pseudo bars
-    if (root.tagName === 'IMG') considerWhiteImg(root);
-    for (const im of root.querySelectorAll('img')) considerWhiteImg(im);
     if (root.matches && root.matches(PSEUDO_CANDIDATES)) considerPseudoBar(root);
     for (const pb of root.querySelectorAll(PSEUDO_CANDIDATES)) considerPseudoBar(pb);
 
@@ -494,12 +462,13 @@
     styleEl.textContent =
       ':root{--gm-accent-fg:' + settings.color + ';}' +
       '.' + CLASS + '{color:var(--gm-accent-fg)!important;}' +
-      // ONLY the svg's own fill/stroke. The old rule also forced every descendant
-      // ('*') to the accent, which erased two-tone icons: Gmail draws e.g. the Support
-      // bubble as a white plate path PLUS a darker glyph path, and painting both accent
-      // produced a featureless square. Descendant shapes are handled one at a time by
-      // considerShape, which only overrides a shape that actually tested white.
-      '.' + CLASS_ICON + '{fill:var(--gm-accent-fg)!important;stroke:var(--gm-accent-fg)!important;}' +
+      // ONLY fill. Google's icon SVGs open with a transparent hit-area path,
+      // `<path fill="none" d="M0 0h24v24H0z">`, which INHERITS `stroke` from the svg
+      // element: forcing stroke here stroked that 24x24 hit area and drew an accent
+      // square outline around every such icon (magnifier, support, tab-bar icons).
+      // Any genuinely stroked glyph is handled per-shape by considerShape, which only
+      // overrides a shape whose own stroke tested white.
+      '.' + CLASS_ICON + '{fill:var(--gm-accent-fg)!important;}' +
       '.' + CLASS_PLATE + '{background-color:var(--gm-accent-fg)!important;}' +
       '.' + CLASS_PLATE_CLEAR + '{background-color:transparent!important;}' +
       '.' + CLASS_BORDER + '{border-color:var(--gm-accent-fg)!important;}' +
@@ -519,15 +488,6 @@
       // decorative white pseudo backs (the selected-tab underline bar)
       '.' + CLASS_BAR + '::before{background-color:var(--gm-accent-fg)!important;}' +
       '.' + CLASS_BAR2 + '::after{background-color:var(--gm-accent-fg)!important;}' +
-      // white <img> bitmaps: hidden, with the same bitmap masking an accent ::after
-      '.' + CLASS_IMGHIDE + '{visibility:hidden!important;}' +
-      '.' + CLASS_IMGGLYPH + '{position:relative!important;}' +
-      '.' + CLASS_IMGGLYPH + '::after{content:"";position:absolute;inset:0;pointer-events:none;' +
-        'background-color:var(--gm-accent-fg);' +
-        '-webkit-mask-image:var(--gm-ico);mask-image:var(--gm-ico);' +
-        '-webkit-mask-size:var(--gm-ico-size);mask-size:var(--gm-ico-size);' +
-        '-webkit-mask-position:var(--gm-ico-pos);mask-position:var(--gm-ico-pos);' +
-        '-webkit-mask-repeat:var(--gm-ico-rep);mask-repeat:var(--gm-ico-rep);}' +
       // scrollbars are browser chrome, not DOM: only a UA rule reaches them
       '::-webkit-scrollbar{width:12px;height:12px;}' +
       '::-webkit-scrollbar-track{background:transparent;}' +

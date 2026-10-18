@@ -4,6 +4,36 @@ Working directory is `F:\Documents\GitHub\gmail-accent` and the repository is
 `DarkSky7/gmail-accent` — folder and repo names match. The extension is loaded
 unpacked in Brave from that folder path.
 
+## 1.5.5 — 2026-10-18
+
+**Accent square outlines around icons — and the "box" above the tab row.** Owner reported a
+square outline around the magnifier, another around the support `?`, and a wrap/box above
+the `Primary … Updates` row. One root cause: Google's icon SVGs open with a **transparent
+hit-area path**, `<path fill="none" d="M0 0h24v24H0z">`. It has no stroke of its own, so it
+**inherits `stroke` from the `<svg>` element** — and `CLASS_ICON` was setting
+`stroke: accent !important` on the wrapper. Every such icon therefore got its 24x24 hit
+area stroked: a square frame around the glyph, and a boxed look around the tab-row icon.
+
+Fix: `CLASS_ICON` now sets **fill only**. Stroked glyphs are still handled, per shape, by
+`considerShape`, which overrides a shape only when that shape's own stroke tested white.
+Verified: the hit-area path now computes `cssStroke: none` while the glyph path keeps
+`cssFill: rgb(123,200,206)`.
+
+**Wordmark left native.** The `<img>` masking pass existed solely to tint
+`logo_gmail_lockup_dark_2x_r7.png`. The owner prefers the Gmail "M" in its own colours, so
+the pass is removed outright (function, CSS and call sites) rather than neutered —
+re-adding it needs an explicit request. White pixels therefore go **up** to 2,919 (0.050%)
+by design: the wordmark (2,000 px) plus the profile avatar are the only white left, and
+both are supposed to be.
+
+**Measurement lesson worth keeping.** The earlier "0 elements moved" layout diff was
+*invalid*: it stripped our classes but left our inline `position` and `background-color`
+overrides in place, so the DOM still carried the layout damage. The thorough version
+strips classes **and** every property we set (`position`, `background-color`,
+`background-image`, `fill`, `stroke`, `visibility`, the mask properties and `--gm-ico*`)
+before re-measuring: 1,930 elements, **0 changed**. A diff that cannot fail is worthless —
+strip everything you touched, or you are measuring your own leftovers.
+
 ## 1.5.4 — 2026-10-18
 
 Two defects reported from a screenshot: **icons had moved** (the search magnifier and the
