@@ -1,8 +1,8 @@
 # Changelog
 
-Working directory is `F:\Documents\GitHub\gmail-accent` (the folder keeps its
-original name; this repository is `DarkSky7/gmail-tint`). The extension loaded
-unpacked in Brave uses the folder path, so the folder was not renamed.
+Working directory is `F:\Documents\GitHub\gmail-accent` and the repository is
+`DarkSky7/gmail-accent` — folder and repo names match. The extension is loaded
+unpacked in Brave from that folder path.
 
 ## 1.4.1 — 2026-10-18
 
