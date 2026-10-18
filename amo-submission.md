@@ -1,7 +1,22 @@
 # AMO submission kit — Gmail Accent v1.5.8
 
 Package: `dist/gmail-accent-1.5.8.xpi` (17,958 bytes, 9 entries, byte-identical `.zip`)
-Extension (Gecko) ID: `gmail-accent@landis.cc` — already in `manifest.json`
+Extension (Gecko) ID: `gmail-accent@addons.landis.cc` — already in `manifest.json`
+
+> **Why this ID (decided 2026-10-18).** An earlier 1.5.7 build was submitted while signed
+> in as **SM** (`Strategic.Macroeconomics@gmail.com`); it succeeded and lives in SM's
+> developer hub as "Gmail Accent - recolor the white text", v1.5.7. AMO has **no ownership
+> transfer**, and a GUID stays bound to the account that first registered it, so that
+> listing can never become DarkSky's. The add-on is therefore being published fresh under
+> **DarkSky** on the new ID `gmail-accent@addons.landis.cc`. Nothing is lost: the SM copy
+> was never installable (unsigned, unlisted, zero installs) and no signed XPI was ever
+> distributed from it.
+> Consequences to remember:
+> - Upload via **"Submit a New Add-on"** as DarkSky — *not* "Upload New Version".
+> - The SM-side listing is dead weight; delete it opportunistically so it stops appearing
+>   in that account's hub. Deleting it does **not** free `gmail-accent@landis.cc`, and that
+>   is fine — this package no longer uses that ID.
+> - Changing this ID again later would mean yet another new add-on.
 Minimum: Firefox 140 / Firefox for Android 142 (matches `data_collection_permissions`)
 Validator status: clean — no warnings as of 1.5.8
 Repository: https://github.com/DarkSky7/gmail-accent
@@ -13,8 +28,12 @@ Repository: https://github.com/DarkSky7/gmail-accent
 - **Homepage / support:** the GitHub repo above
 
 ## Route
-1. Sign in to addons.mozilla.org as Michael Landis.
-2. "Submit a New Add-on" → upload `dist/gmail-accent-1.4.1.xpi`.
+1. Sign in to addons.mozilla.org as **DarkSky** (`darkskyanarchy@gmail.com`) —
+   TOTP is in **Proton Authenticator**. Do **not** sign in as SM: this add-on must not
+   land in SM's hub a second time.
+2. **"Submit a New Add-on"** → upload `dist/gmail-accent-1.5.8.xpi`.
+   (Not "Upload New Version": that path belongs to the old SM-owned
+   `gmail-accent@landis.cc` listing, which is being abandoned.)
 3. Distribution channel: **Unlisted** → minimal metadata → submit.
 4. AMO signs it; download the signed XPI from the Developer Hub.
 5. Install the **signed** XPI in Zen/Firefox (drag onto `about:addons`, or

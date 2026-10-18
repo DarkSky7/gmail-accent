@@ -33,7 +33,7 @@
   ],
   "browser_specific_settings": {
     "gecko": {
-      "id": "gmail-accent@landis.cc",
+      "id": "gmail-accent@addons.landis.cc",
       "strict_min_version": "140.0",
       "data_collection_permissions": { "required": ["none"] }
     },
