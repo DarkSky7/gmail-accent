@@ -4,6 +4,48 @@ Working directory is `F:\Documents\GitHub\gmail-accent` and the repository is
 `DarkSky7/gmail-accent` — folder and repo names match. The extension is loaded
 unpacked in Brave from that folder path.
 
+## 1.5.2 — 2026-10-18
+
+Closes the remaining white in Mike's screenshot, found by measuring PIXELS rather than
+DOM properties (the DOM audits had already given two wrong "0 white" answers).
+
+**Five more channels the engine could not see:**
+
+1. **Decorative white pseudo backgrounds.** The selected tab's bar is `::before` with
+   `background-color: rgb(255,255,255)` and no image or mask — invisible to every text,
+   glyph and plate pass. New `considerPseudoBar()` tints those.
+2. **White glyphs delivered as `<img>`.** The Gmail wordmark is an `<img>`, not a
+   background-image. An `<img>` cannot mask itself, so the bitmap is hidden and the SAME
+   bitmap masks an accent `::after` on the parent.
+3. **Placeholder text** is not an element; the text pass can never reach it. Added
+   `input::placeholder{color:accent}`.
+4. **`_nv200` / `_nv100` icon variants.** The tab-bar icons ship as e.g.
+   `info_baseline_nv200_20dp.png` — the mask pass only accepted filenames containing
+   "white", so those stayed light.
+5. **Light plates wider than 64 px.** The message-list label chip is 105x18 with dark
+   text: a bigger version of the Compose-button case. Plate candidates now go to 360x120
+   while the mask pass keeps its own tighter 64 px bound.
+
+**And the regression that created the squares Mike reported.** `CLASS_ICON` CSS forced
+`fill:accent !important` on *every descendant* (`*`). Gmail draws the Support button and
+the bottom-right chip as a white plate path **plus** a darker glyph path, so forcing the
+whole subtree to one colour erased the symbol — a featureless accent square. The rule now
+touches only the svg's own fill/stroke, and `considerShape` tints descendant shapes one at
+a time, only those that actually tested white, leaving dark glyph paths dark.
+
+**Measured on Brave, Gmail dark theme, one Inbox view:**
+
+- white pixels: **26,408 → 917 (0.454% → 0.016%)** of a 3123x1864 capture
+- white regions: 8 → 2, and both remaining are the account **profile photo** (a real
+  image, correctly left untouched)
+- tinted elements sampled: 179; elements with >=55% accent coverage: 3 — the Compose
+  plate (81.7%), the label chip (83.4%) and the Support ring (56.2%), each verified by
+  ASCII pixel dump to contain a visible contrasting glyph
+
+**Method note:** capture the screenshot only after `Page.bringToFront` — a backgrounded
+tab returns a blank white frame, which reads as "87% white" and sends you chasing a
+non-existent catastrophe.
+
 ## 1.4.1 — 2026-10-18
 
 Fixes the two reported visual defects: sidebar/toolbar icons that "regressed to

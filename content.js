@@ -26,6 +26,10 @@
   const CLASS_BORDER = 'gm-accent-border';
   const CLASS_GLYPH = 'gm-accent-glyph';
   const CLASS_SHAPE = 'gm-accent-shape';
+  const CLASS_BAR = 'gm-accent-bar';
+  const CLASS_BAR2 = 'gm-accent-bar2';
+  const CLASS_IMGHIDE = 'gm-accent-imghide';
+  const CLASS_IMGGLYPH = 'gm-accent-imgglyph';
   const STYLE_ID = 'gm-accent-style';
   const SETTINGS_VERSION = 2;
 
@@ -47,6 +51,8 @@
   let plateCleared = 0;
   let maskHits = 0;
   let shapeHits = 0;
+  let barHits = 0;
+  let imgHits = 0;
   let queue = [];
   let scheduled = false;
 
@@ -170,7 +176,12 @@
    */
   function considerShape(shape) {
     if (!settings.tintIcons) return;
-    if (shape.classList.contains(CLASS_SHAPE) || shape.closest('.' + CLASS_ICON)) return;
+    /* Deliberately NOT skipping shapes inside a .gm-accent-icon svg: an icon is often a
+     * white plate path plus a darker glyph path, and tinting the wrapper alone leaves the
+     * plate white while forcing the whole subtree to one colour kills the symbol. Each
+     * shape is tested and overridden on its own, so the dark glyph path keeps its
+     * contrast against the now-accent plate. */
+    if (shape.classList.contains(CLASS_SHAPE)) return;
     const cs = getComputedStyle(shape);
     if (!cs) return;
     const fill = parseColor(cs.fill);
@@ -185,6 +196,61 @@
     if (strokeWhite) shape.style.setProperty('stroke', 'var(--gm-accent-fg)', 'important');
     shape.classList.add(CLASS_SHAPE);
     shapeHits++;
+  }
+
+  /* 2c. White glyphs delivered as <img>, and decorative white pseudo backs.
+   *
+   * The Gmail wordmark is an <img> whose pixels are white: no CSS property recolours a
+   * bitmap, and the element cannot mask itself (opacity/mask apply to its own painted
+   * content). The trick is to hide the <img> and paint the SAME bitmap as an alpha mask
+   * on its parent's ::after, which is free to carry the accent.
+   */
+  function considerWhiteImg(img) {
+    if (!settings.tintIcons) return;
+    if (!img || img.tagName !== 'IMG') return;
+    if (img.classList.contains(CLASS_IMGHIDE)) return;
+    const src = img.currentSrc || img.src || '';
+    if (!src || !/white|logo|lockup/i.test(src)) return;
+    const b = img.getBoundingClientRect();
+    if (b.width < 12 || b.height < 8 || b.width > 420 || b.height > 140) return;
+
+    const parent = img.parentElement;
+    if (!parent || parent.classList.contains(CLASS_IMGGLYPH)) return;
+    const pcs = getComputedStyle(parent);
+    if (pcs.position === 'static') parent.style.setProperty('position', 'relative', 'important');
+    parent.style.setProperty('--gm-ico', 'url("' + src + '")');
+    parent.style.setProperty('--gm-ico-size', 'contain');
+    parent.style.setProperty('--gm-ico-pos', 'center');
+    parent.style.setProperty('--gm-ico-rep', 'no-repeat');
+    parent.classList.add(CLASS_IMGGLYPH);
+    img.classList.add(CLASS_IMGHIDE);
+    imgHits++;
+  }
+
+  /* Gmail marks the SELECTED tab and several chrome rows with a bare pseudo-element
+   * whose background-color is pure white (measured: the "Primary" tab's ::before is
+   * rgb(255,255,255) with no image and no mask). Nothing in the text/glyph/plate passes
+   * can see that, so it renders as a white bar under a cyan label. */
+  const PSEUDO_CANDIDATES = '[role="tab"],[role="tablist"] [role="tab"],.aAy,.aAA,[role="toolbar"]>*,'
+    + '[role="banner"] [role="button"],.J-KU-KO,[role="navigation"] [role="link"]';
+
+  function considerPseudoBar(el) {
+    if (!settings.tintIcons) return;
+    const b = el.getBoundingClientRect();
+    if (b.width < 4 || b.height < 2 || b.width > 640 || b.height > 420) return;
+    for (const [pseudo, cls] of [['::before', CLASS_BAR], ['::after', CLASS_BAR2]]) {
+      if (el.classList.contains(cls)) continue;
+      const c = getComputedStyle(el, pseudo);
+      if (!c) continue;
+      if (!/^(""|'')$/.test((c.content || '').trim())) continue;   // must be a generated box
+      const bg = parseColor(c.backgroundColor);
+      if (!bg || bg.a < 0.5 || !isNearWhite(bg)) continue;
+      if (c.backgroundImage && c.backgroundImage !== 'none') continue;
+      const mask = c.webkitMaskImage || c.maskImage;
+      if (mask && mask !== 'none') continue;
+      el.classList.add(cls);
+      barHits++;
+    }
   }
 
   /* 3. white plates (the Compose pill and friends).
@@ -272,8 +338,11 @@
     const cs = getComputedStyle(el);
     const bi = cs.backgroundImage;
     if (!bi || bi === 'none' || bi.indexOf('url(') < 0) return;
-    // only the icon sets Gmail names explicitly white; never touch photos or sprites
-    if (!/white/i.test(bi) || /skinnable/i.test(bi)) return;
+    /* Gmail ships the same glyph in several variants: "*_white_20dp.png" for the dark
+     * theme, but also neutral/light ones such as "info_baseline_nv200_20dp.png" used in
+     * the tab bar. Testing only for "white" left those permanently light. Photos never
+     * match either pattern, so their pixels are never masked. */
+    if (!/white|nv200|nv100/i.test(bi) || /skinnable/i.test(bi)) return;
     // never paint over real text; child elements are fine (a checkbox tick lives there)
     if (el.textContent.trim()) return;
     /* A glyph drawn by a child <svg>/<img> colours itself. Masking the parent would paint
@@ -343,6 +412,12 @@
     if (/^(PATH|RECT|CIRCLE|ELLIPSE|POLYGON|LINE|USE)$/.test(root.tagName)) considerShape(root);
     for (const s of root.querySelectorAll('path,rect,circle,ellipse,polygon,line,use')) considerShape(s);
 
+    // white bitmaps delivered as <img>, and decorative white pseudo bars
+    if (root.tagName === 'IMG') considerWhiteImg(root);
+    for (const im of root.querySelectorAll('img')) considerWhiteImg(im);
+    if (root.matches && root.matches(PSEUDO_CANDIDATES)) considerPseudoBar(root);
+    for (const pb of root.querySelectorAll(PSEUDO_CANDIDATES)) considerPseudoBar(pb);
+
     // checkbox-ish controls only: cheap and targeted
     if (root.getAttribute && root.getAttribute('role') === 'checkbox') considerBorder(root);
     for (const box of root.querySelectorAll('[role=checkbox]')) considerBorder(box);
@@ -352,7 +427,11 @@
     const boxes = [];
     const addBox = el => {
       const b = el.getBoundingClientRect();
-      if (b.width < 8 || b.height < 8 || b.width > 64 || b.height > 64) return;
+      /* Wider than the mask cap on purpose: considerMask applies its own tighter 64 px
+       * bound, while considerPlate needs the room to reach light chips like the 105x18
+       * label pill in the message list (a light plate with dark text - the same case as
+       * the Compose button, only bigger). */
+      if (b.width < 8 || b.height < 8 || b.width > 360 || b.height > 120) return;
       boxes.push(el);
     };
     if (/^(DIV|SPAN|IMG|LI|A|BUTTON)$/.test(root.tagName)) addBox(root);
@@ -397,17 +476,39 @@
     styleEl.textContent =
       ':root{--gm-accent-fg:' + settings.color + ';}' +
       '.' + CLASS + '{color:var(--gm-accent-fg)!important;}' +
-      '.' + CLASS_ICON + ',.' + CLASS_ICON + ' *{fill:var(--gm-accent-fg)!important;stroke:var(--gm-accent-fg)!important;}' +
+      // ONLY the svg's own fill/stroke. The old rule also forced every descendant
+      // ('*') to the accent, which erased two-tone icons: Gmail draws e.g. the Support
+      // bubble as a white plate path PLUS a darker glyph path, and painting both accent
+      // produced a featureless square. Descendant shapes are handled one at a time by
+      // considerShape, which only overrides a shape that actually tested white.
+      '.' + CLASS_ICON + '{fill:var(--gm-accent-fg)!important;stroke:var(--gm-accent-fg)!important;}' +
       '.' + CLASS_PLATE + '{background-color:var(--gm-accent-fg)!important;}' +
       '.' + CLASS_PLATE_CLEAR + '{background-color:transparent!important;}' +
       '.' + CLASS_BORDER + '{border-color:var(--gm-accent-fg)!important;}' +
-      // the glyph lives on ::after so the element's own plate stays free to be cleared
+      // the glyph lives on ::before so the element's own plate stays free to be cleared
       '.' + CLASS_GLYPH + '{background-image:none!important;}' +
       '.' + CLASS_GLYPH + '::before{content:"";position:absolute;inset:0;pointer-events:none;' +
-        'background-color:var(--gm-accent-fg);' +
+        'background-color:var(--gm-accent-fg);background-image:none!important;' +
         '-webkit-mask-image:var(--gm-ico);mask-image:var(--gm-ico);' +
         '-webkit-mask-position:var(--gm-ico-pos);mask-position:var(--gm-ico-pos);' +
         '-webkit-mask-size:var(--gm-ico-size);mask-size:var(--gm-ico-size);' +
+        '-webkit-mask-repeat:var(--gm-ico-rep);mask-repeat:var(--gm-ico-rep);}' +
+      // Gmail often paints its OWN glyph bitmap on ::before of the same element; left in
+      // place it sits on top of the accent mask and the icon reads white again
+      '.' + CLASS_GLYPH + '::after{background-image:none!important;}' +
+      // placeholder text is not an element, so the text pass can never reach it
+      'input::placeholder,textarea::placeholder{color:var(--gm-accent-fg)!important;opacity:1!important;}' +
+      // decorative white pseudo backs (the selected-tab underline bar)
+      '.' + CLASS_BAR + '::before{background-color:var(--gm-accent-fg)!important;}' +
+      '.' + CLASS_BAR2 + '::after{background-color:var(--gm-accent-fg)!important;}' +
+      // white <img> bitmaps: hidden, with the same bitmap masking an accent ::after
+      '.' + CLASS_IMGHIDE + '{visibility:hidden!important;}' +
+      '.' + CLASS_IMGGLYPH + '{position:relative!important;}' +
+      '.' + CLASS_IMGGLYPH + '::after{content:"";position:absolute;inset:0;pointer-events:none;' +
+        'background-color:var(--gm-accent-fg);' +
+        '-webkit-mask-image:var(--gm-ico);mask-image:var(--gm-ico);' +
+        '-webkit-mask-size:var(--gm-ico-size);mask-size:var(--gm-ico-size);' +
+        '-webkit-mask-position:var(--gm-ico-pos);mask-position:var(--gm-ico-pos);' +
         '-webkit-mask-repeat:var(--gm-ico-rep);mask-repeat:var(--gm-ico-rep);}' +
       // scrollbars are browser chrome, not DOM: only a UA rule reaches them
       '::-webkit-scrollbar{width:12px;height:12px;}' +
@@ -446,12 +547,24 @@
       el.style.removeProperty('fill');
       el.style.removeProperty('stroke');
     });
+    document.querySelectorAll('.' + CLASS_BAR + ',.' + CLASS_BAR2).forEach(el => {
+      el.classList.remove(CLASS_BAR); el.classList.remove(CLASS_BAR2);
+    });
+    document.querySelectorAll('.' + CLASS_IMGHIDE).forEach(el => el.classList.remove(CLASS_IMGHIDE));
+    document.querySelectorAll('.' + CLASS_IMGGLYPH).forEach(el => {
+      el.classList.remove(CLASS_IMGGLYPH);
+      for (const p of ['--gm-ico', '--gm-ico-size', '--gm-ico-pos', '--gm-ico-rep', 'position']) {
+        el.style.removeProperty(p);
+      }
+    });
     hits = 0;
     iconHits = 0;
     plateHits = 0;
     plateCleared = 0;
     maskHits = 0;
     shapeHits = 0;
+    barHits = 0;
+    imgHits = 0;
     queue = [];
   }
 
@@ -547,7 +660,7 @@
 
   chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
     if (!msg || !msg.type) return;
-    const counts = () => ({ hits, iconHits, plateHits, plateCleared, maskHits, shapeHits });
+    const counts = () => ({ hits, iconHits, plateHits, plateCleared, maskHits, shapeHits, barHits, imgHits });
     if (msg.type === 'gm-accent:apply' && msg.settings) {
       settings = Object.assign({}, settings, msg.settings);
       applyAll();
