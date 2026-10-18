@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Gmail Accent - recolor the white text",
+  "version": "1.4.1",
+  "description": "In Gmail's dark theme, substitutes a colour of your choice for the near-white foreground. Default: muted cyan. Leaves white text on light or coloured buttons alone.",
+  "permissions": ["storage"],
+  "action": {
+    "default_title": "Gmail Accent",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "popup.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "gmail-accent@landis.cc",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": { "required": ["none"] }
+    }
+  }
+}

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gmail Accent</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>Gmail Accent</h1>
+    <label class="switch" title="Enable or disable on Gmail">
+      <input type="checkbox" id="enabled">
+      <span></span>
+    </label>
+  </header>
+
+  <section>
+    <div class="row">
+      <label for="color">Foreground</label>
+      <div class="colorline">
+        <input type="color" id="color">
+        <input type="text" id="hex" spellcheck="false" maxlength="7">
+      </div>
+    </div>
+
+    <div class="presets" id="presets"></div>
+
+    <div class="row">
+      <label for="threshold">White threshold <output id="thresholdOut"></output></label>
+      <input type="range" id="threshold" min="150" max="250" step="5">
+    </div>
+
+    <label class="check">
+      <input type="checkbox" id="tintDim">
+      <span>Also tint dim grey text</span>
+    </label>
+
+    <label class="check">
+      <input type="checkbox" id="tintIcons">
+      <span>Also tint icon glyphs</span>
+    </label>
+  </section>
+
+  <footer>
+    <span id="status">-</span>
+    <button id="reset" type="button">Reset</button>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
