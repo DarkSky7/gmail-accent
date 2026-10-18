@@ -4,6 +4,21 @@ Working directory is `F:\Documents\GitHub\gmail-accent` and the repository is
 `DarkSky7/gmail-accent` — folder and repo names match. The extension is loaded
 unpacked in Brave from that folder path.
 
+## 1.5.6 — 2026-10-18
+
+**Removed the extra line above the Primary row.** It was the selected tab's underline: a
+`::before` of `237x3px` pure white on `div.aAy.J-KU-KO`. Natively that hairline is subtle;
+tinted accent it read as a conspicuous rule across the tab row, which is exactly what the
+owner asked to be rid of.
+
+Pseudo bars are now classified by geometry: **thin** (height <= 8px) means an *indicator*
+and is hidden (`display:none` on the pseudo); anything taller is a real *plate* and still
+gets the accent. The active tab remains marked by its accent label and the row's
+translucent overlay.
+
+Verified by scanning rows y=155..161 for runs of accent longer than 2px: none. Layout diff
+1,930 elements: 0 changed. White pixels unchanged at 2,919 (wordmark + avatar only).
+
 ## 1.5.5 — 2026-10-18
 
 **Accent square outlines around icons — and the "box" above the tab row.** Owner reported a

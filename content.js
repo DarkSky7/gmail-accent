@@ -28,6 +28,8 @@
   const CLASS_SHAPE = 'gm-accent-shape';
   const CLASS_BAR = 'gm-accent-bar';
   const CLASS_BAR2 = 'gm-accent-bar2';
+  const CLASS_BARHIDE = 'gm-accent-barhide';
+  const CLASS_BARHIDE2 = 'gm-accent-barhide2';
   const CLASS_IMGHIDE = 'gm-accent-imghide';
   const CLASS_IMGGLYPH = 'gm-accent-imgglyph';
   const STYLE_ID = 'gm-accent-style';
@@ -220,8 +222,9 @@
     if (!settings.tintIcons) return;
     const b = el.getBoundingClientRect();
     if (b.width < 4 || b.height < 2 || b.width > 640 || b.height > 420) return;
-    for (const [pseudo, cls] of [['::before', CLASS_BAR], ['::after', CLASS_BAR2]]) {
-      if (el.classList.contains(cls)) continue;
+    for (const [pseudo, cls, hideCls] of [['::before', CLASS_BAR, CLASS_BARHIDE],
+                                          ['::after', CLASS_BAR2, CLASS_BARHIDE2]]) {
+      if (el.classList.contains(cls) || el.classList.contains(hideCls)) continue;
       const c = getComputedStyle(el, pseudo);
       if (!c) continue;
       if (!/^(""|'')$/.test((c.content || '').trim())) continue;   // must be a generated box
@@ -230,7 +233,19 @@
       if (c.backgroundImage && c.backgroundImage !== 'none') continue;
       const mask = c.webkitMaskImage || c.maskImage;
       if (mask && mask !== 'none') continue;
-      el.classList.add(cls);
+
+      /* A THIN bar is an indicator, not a plate: the selected tab's underline is
+       * 237x3px of pure white. Tinting it accent turns a subtle native hairline into a
+       * conspicuous accent rule ("the extra line above the Primary row"), so thin bars
+       * are HIDDEN rather than recoloured. Anything taller is a real plate and gets the
+       * accent. The owner asked for that line to be gone; the active tab is still marked
+       * by its label colour and the row's translucent overlay. */
+      const h = parseFloat(c.height);
+      if (isFinite(h) && h > 0 && h <= 8) {
+        el.classList.add(hideCls);
+      } else {
+        el.classList.add(cls);
+      }
       barHits++;
     }
   }
@@ -488,6 +503,10 @@
       // decorative white pseudo backs (the selected-tab underline bar)
       '.' + CLASS_BAR + '::before{background-color:var(--gm-accent-fg)!important;}' +
       '.' + CLASS_BAR2 + '::after{background-color:var(--gm-accent-fg)!important;}' +
+      // thin indicator bars are hidden, not recoloured (a 3px hairline in accent reads as
+      // a conspicuous extra rule across the tab row)
+      '.' + CLASS_BARHIDE + '::before{display:none!important;}' +
+      '.' + CLASS_BARHIDE2 + '::after{display:none!important;}' +
       // scrollbars are browser chrome, not DOM: only a UA rule reaches them
       '::-webkit-scrollbar{width:12px;height:12px;}' +
       '::-webkit-scrollbar-track{background:transparent;}' +
@@ -525,8 +544,10 @@
       el.style.removeProperty('fill');
       el.style.removeProperty('stroke');
     });
-    document.querySelectorAll('.' + CLASS_BAR + ',.' + CLASS_BAR2).forEach(el => {
+    document.querySelectorAll('.' + CLASS_BAR + ',.' + CLASS_BAR2 + ',.'
+      + CLASS_BARHIDE + ',.' + CLASS_BARHIDE2).forEach(el => {
       el.classList.remove(CLASS_BAR); el.classList.remove(CLASS_BAR2);
+      el.classList.remove(CLASS_BARHIDE); el.classList.remove(CLASS_BARHIDE2);
     });
     document.querySelectorAll('.' + CLASS_IMGHIDE).forEach(el => el.classList.remove(CLASS_IMGHIDE));
     document.querySelectorAll('.' + CLASS_IMGGLYPH).forEach(el => {
