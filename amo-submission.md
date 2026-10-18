@@ -17,6 +17,11 @@ Extension (Gecko) ID: `gmail-accent@addons.landis.cc` — already in `manifest.j
 >   in that account's hub. Deleting it does **not** free `gmail-accent@landis.cc`, and that
 >   is fine — this package no longer uses that ID.
 > - Changing this ID again later would mean yet another new add-on.
+> - **Do not revert to `gmail-accent@landis.cc`.** The SM listing was deleted on
+>   2026-10-18 and the ID then returned 404 on the public API, which makes reverting look
+>   tempting. Don't: AMO is known to keep deleted GUIDs reserved server-side, so a
+>   submission would fail the duplicate-ID check *after* the upload step. The new ID is
+>   confirmed unclaimed and stays.
 Minimum: Firefox 140 / Firefox for Android 142 (matches `data_collection_permissions`)
 Validator status: clean — no warnings as of 1.5.8
 Repository: https://github.com/DarkSky7/gmail-accent
