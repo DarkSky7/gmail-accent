@@ -16,8 +16,8 @@ import zipfile
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DIST = os.path.join(ROOT, "dist")
-SKIP_DIRS = {".git", "dist", "node_modules", "__pycache__", "test"}
-SKIP_FILES = {".gitignore", "build_release.py", "README.md"}
+SKIP_DIRS = {".git", ".github", "dist", "node_modules", "__pycache__", "test"}
+SKIP_FILES = {".gitignore", "build_release.py", "README.md", "CHANGELOG.md", "amo-submission.md"}
 
 with open(os.path.join(ROOT, "manifest.json"), encoding="utf-8") as fh:
     manifest = json.load(fh)

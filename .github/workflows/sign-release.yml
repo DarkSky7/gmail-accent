@@ -1,0 +1,171 @@
+name: Sign (AMO unlisted)
+
+# Signs the built XPI through AMO's API and commits the signed package back into the repo.
+#
+# Why this exists: signing used to be a manual trip through the AMO Developer Hub (browser
+# upload, then download the signed file by hand). Unlisted add-ons are auto-approved, so a
+# runner can do it unattended - but signed files for unlisted add-ons are NOT publicly
+# fetchable, which is why this needs API credentials.
+#
+# Prerequisites, once per add-on:
+#   1. addons.mozilla.org -> Developer Hub -> API keys -> generate a key pair
+#      (JWT issuer + secret). Free, no paid tier.
+#   2. Add them as repository secrets: AMO_JWT_ISSUER and AMO_JWT_SECRET
+#      (Settings -> Secrets and variables -> Actions). One key pair is per DEVELOPER
+#      ACCOUNT, so the same pair serves every add-on Mike owns.
+#
+# The signed package is built by unpacking the committed build output, NOT by globbing the
+# repo, so what AMO signs is byte-for-byte the reviewed artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'AMO channel (unlisted auto-signs; listed enters human review)'
+        required: true
+        default: 'unlisted'
+        type: choice
+        options: [unlisted, listed]
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+# Never let two runs sign at once: AMO rejects a version that already exists.
+concurrency:
+  group: amo-sign-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fail fast if AMO credentials are missing
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          set -euo pipefail
+          missing=0
+          if [ -z "${AMO_JWT_ISSUER}" ]; then echo "::error::AMO_JWT_ISSUER secret is not set"; missing=1; fi
+          if [ -z "${AMO_JWT_SECRET}" ]; then echo "::error::AMO_JWT_SECRET secret is not set"; missing=1; fi
+          if [ "$missing" = "1" ]; then
+            echo "Generate a key pair at https://addons.mozilla.org/en-US/developers/addon/api/key/"
+            echo "then add both values under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+      - name: Build the unsigned artifact
+        run: |
+          set -euo pipefail
+          python3 build_release.py
+          VERSION=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
+          XPI="dist/gmail-accent-${VERSION}.xpi"
+          test -f "$XPI" || { echo "::error::build did not produce $XPI"; ls -l dist; exit 1; }
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Built and confirmed $XPI"
+
+      - name: Stage the exact build output
+        run: |
+          set -euo pipefail
+          rm -rf stage && mkdir -p stage dist/signed
+          unzip -q "dist/gmail-accent-${VERSION}.xpi" -d stage
+          # The staged tree is what AMO will sign; nothing else can leak in.
+          find stage -type f | sort | sed 's|^stage/||' > unsigned-files.txt
+          echo "--- artifact contents ---"
+          cat unsigned-files.txt
+
+      - name: Sign with web-ext (AMO API)
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          CHANNEL: ${{ github.event.inputs.channel || 'unlisted' }}
+        run: |
+          set -euo pipefail
+          npx --yes web-ext@8 sign \
+            --source-dir stage \
+            --artifacts-dir dist/signed \
+            --channel "$CHANNEL" \
+            --api-key "$AMO_JWT_ISSUER" \
+            --api-secret "$AMO_JWT_SECRET" \
+            --no-input \
+            --timeout 600000 2>&1 | tee sign.log
+          if grep -qi 'already exists' sign.log; then
+            echo "::error::Version $VERSION already exists on AMO. Bump manifest.json version and re-run."
+            exit 1
+          fi
+
+      - name: Verify the signature
+        run: |
+          set -euo pipefail
+          XPI=$(ls dist/signed/*.xpi | head -1)
+          test -n "$XPI"
+          echo "signed: $XPI ($(stat -c%s "$XPI") bytes)"
+          echo "--- META-INF (must contain all three) ---"
+          unzip -l "$XPI" | grep -E 'META-INF/(mozilla\.rsa|mozilla\.sf|manifest\.mf)' || {
+            echo "::error::Signature files missing - AMO did not sign this package"; exit 1; }
+          echo "--- content parity vs unsigned build ---"
+          unzip -Z1 "$XPI" | grep -v '^META-INF/' | sort > signed-files.txt
+          if ! diff -u unsigned-files.txt signed-files.txt; then
+            echo "::error::Signed package contents differ from the built artifact"; exit 1
+          fi
+          echo "Contents match: $(wc -l < signed-files.txt) files"
+
+      - name: Commit the signed XPI back into the repo
+        # THIS is what closes the loop: without it the repo carries only a reproducible
+        # UNSIGNED build, so "the repo has the extension" and "the repo has the signed
+        # extension people actually install" stay different facts.
+        # Only on a tag push - a dispatch run has no version to file the artifact under.
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          XPI=$(ls dist/signed/*.xpi | head -1)
+          test -n "$XPI"
+          mkdir -p signed
+          TARGET="signed/gmail-accent-${VERSION}.xpi"
+          cp "$XPI" "$TARGET"
+          ( cd signed && sha256sum "$(basename "$TARGET")" > "$(basename "$TARGET").sha256" )
+          cp "$XPI" signed/gmail-accent-latest.xpi
+          ( cd signed && sha256sum gmail-accent-latest.xpi > gmail-accent-latest.xpi.sha256 )
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add signed/
+          if git diff --cached --quiet; then
+            echo "signed artifact already committed for $VERSION - nothing to do"
+            exit 0
+          fi
+          git commit -m "sign: AMO-signed gmail-accent ${VERSION}
+
+          Signed through the AMO API on tag ${GITHUB_REF_NAME}. Payload is byte-for-byte
+          the reviewed build output; contents verified against the unsigned artifact
+          before this commit was made."
+          # A tag push leaves HEAD detached, so state the destination explicitly.
+          git push origin "HEAD:${DEFAULT_BRANCH}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-xpi-${{ env.VERSION }}
+          path: dist/signed/*.xpi
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Attach the signed XPI to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "Signed build for $GITHUB_REF_NAME"
+          gh release upload "$GITHUB_REF_NAME" dist/signed/*.xpi --clobber
